@@ -7,7 +7,7 @@ if (self.importScripts) {
 const error1 = new Error('error1');
 error1.name = 'error1';
 
-promise_test(() => {
+promise_test(t => {
   let controller;
   const ws = new WritableStream({
     start(c) {
@@ -21,10 +21,37 @@ promise_test(() => {
   const writer = ws.getWriter();
 
   assert_equals(writer.desiredSize, null, 'desiredSize should be null');
-  return writer.closed.catch(r => {
-    assert_equals(r, error1, 'ws should be errored by the passed error');
-  });
+  return promise_rejects(t, error1, writer.closed, 'ws should be errored by the passed error');
 }, 'controller argument should be passed to start method');
+
+promise_test(t => {
+  let controller;
+  const ws = new WritableStream({
+    start(c) {
+      c.error(error1);
+    }
+  });
+
+  const writer = ws.getWriter();
+
+  return Promise.all([
+    promise_rejects(t, error1, writer.ready, 'ready must reject with the error passed to error()'),
+    promise_rejects(t, error1, writer.closed, 'closed must reject with the error passed to error()')
+  ]).then(() => {
+    writer.releaseLock();
+    return Promise.all([
+      promise_rejects(t, new TypeError(), writer.ready, 'ready must reject with an error indicating release'),
+      promise_rejects(t, new TypeError(), writer.closed, 'closed must reject with an error indicating release')
+    ]);
+  }).then(() => {
+    // Obtain a writer again. Check that it reflects the current state of the stream.
+    const writer2 = ws.getWriter();
+    return Promise.all([
+      promise_rejects(t, error1, writer2.ready, 'ready must reject with the error passed to error()'),
+      promise_rejects(t, error1, writer2.closed, 'closed must reject with the error passed to error()')
+    ]);
+  });
+}, 'call error in constructor');
 
 promise_test(t => {
   const ws = new WritableStream({
